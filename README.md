@@ -65,9 +65,9 @@ To ensure enterprise-grade scalability and privacy, this project uses a strictly
 
 * **Backend Engine:** Python/Flask REST API hosted on **Google Cloud Run**.
 
-* **Zero-Trust Security Protocol:** Security was the primary driver behind our infrastructure choice. We utilize a completely **Stateless Architecture** on Cloud Run. We use strict OAuth 2.0 protocols, meaning there are absolutely **zero hardcoded credentials** in our codebase. 
+* **Security Protocol:**  Strict OAuth 2.0 protocols, meaning there are absolutely **zero hardcoded credentials** in our codebase and all secrets managed via environment variables.
 
-* **Ephemeral Data:** Because the Cloud Run environment is ephemeral, the SQLite database holding the active session tokens literally self-destructs and wipes itself clean when the container spins down due to inactivity. We hold zero persistent data on the user’s personal accounts, ensuring a zero-liability environment.
+* **Stateless Runtime:** Because the Cloud Run environment is ephemeral, the SQLite database holding the active session tokens literally self-destructs and wipes itself clean when the container spins down due to inactivity. We hold zero persistent data on the user’s personal accounts, ensuring a zero-liability environment.
 
 ---
 
@@ -111,7 +111,7 @@ The AI does not operate in a solo. It interfaces with the actual workspace:
 
 * **Cloud Infrastructure:** Google Cloud Platform (Cloud Run)
 
-* **Backend:** Python / Flask
+* **Backend:** Python / FastAPI
 
 * **Frontend:** React / Tailwind CSS / Vite
 
