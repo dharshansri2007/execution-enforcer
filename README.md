@@ -67,7 +67,7 @@ To ensure enterprise-grade scalability and privacy, this project uses a strictly
 
 * **Security Protocol:**  Strict OAuth 2.0 protocols, meaning there are absolutely **zero hardcoded credentials** in our codebase and all secrets managed via environment variables.
 
-* **Stateless Runtime:** Because the Cloud Run environment is ephemeral, the SQLite database holding the active session tokens literally self-destructs and wipes itself clean when the container spins down due to inactivity. We hold zero persistent data on the user’s personal accounts, ensuring a zero-liability environment.
+* **Stateless Runtime:** The Cloud Run container is ephemeral. The API processes the orchestration, handles the agent logic, and spins down cleanly without leaking the state
 
 ---
 
@@ -152,7 +152,7 @@ echo "GOOGLE_CLIENT_SECRET=your_oauth_client_secret_here" >> .env
 
 ### 4. Boot the Orchestration Engine
 <pre>
-# Start the Flask API and Multi-Agent system
+# Start the FastAPI and Multi-Agent system
 python main.py
 
 # The backend will initialize on http://127.0.0.1:5000
