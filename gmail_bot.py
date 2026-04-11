@@ -36,7 +36,7 @@ class GmailEnforcer:
                 print("🚨 MANUAL OVERRIDE REQUIRED 🚨")
                 print("1. Click this link to open Google Login:")
                 print(f"\n{auth_url}\n")
-                print("2. Log in as dharshansri2007@gmail.com and grant permission.")
+                print("2. Log in as YOUR_EMAIL@gmail.com and grant permission.")
                 print("3. Your browser will crash and say 'Hmmm... can't reach this page'. THIS IS PERFECT.")
                 print("4. Copy the ENTIRE broken URL from your browser's address bar.")
                 print("="*60 + "\n")
