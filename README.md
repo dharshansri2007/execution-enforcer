@@ -160,6 +160,9 @@ pip install -r requirements.txt
 
 ### 3. Security & Environment Variables
 <pre>
+#Create a .env file in the backend directory and add your credentials
+#(Note: This project strictly enforces zero hardcoded credentials)
+
 GEMINI_API_KEY=your_gemini_api_key_here
 
 GOOGLE_CLIENT_ID=your_oauth_client_id_here
