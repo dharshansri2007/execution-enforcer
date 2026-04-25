@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Activity, Zap, CheckCircle2, XCircle, Clock, 
-  BrainCircuit, Target, ChevronRight, AlertTriangle, ShieldAlert, Skull
-} from 'lucide-react';
+import { Activity, Zap, CheckCircle2, XCircle, Clock, BrainCircuit, Target, ChevronRight, AlertTriangle, ShieldAlert, Skull } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { auth } from '../firebase'; 
 
-// 🔥 THE LIVE CLOUD CONNECTION 🔥
-const API_BASE = "https://execution-backend-796951969409.asia-south1.run.app";
 
-// 🔥 DYNAMIC QUOTES ENGINE
+const API_BASE = import.meta.env.VITE_API_BASE;
+
+
 const ENFORCER_QUOTES = [
   "Discipline is the weapon. Execution is the victory.",
   "Excuses are the nails used to build a house of failure.",
@@ -28,8 +26,10 @@ export default function Tasks() {
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
 
+  // V2 Refs for Synchronous Emergency Unmounts
   const isFocusModeRef = useRef(isFocusMode);
   const activeTaskRef = useRef(null);
+  const tokenRef = useRef(null); 
 
   useEffect(() => {
     isFocusModeRef.current = isFocusMode;
@@ -40,18 +40,28 @@ export default function Tasks() {
     setQuote(ENFORCER_QUOTES[Math.floor(Math.random() * ENFORCER_QUOTES.length)]);
   }, []);
 
-  const fetchTasks = () => {
-    // 🔥 CLOUD SYNC FIXED - Removed /api/
-    fetch(`${API_BASE}/tasks`)
-      .then(res => res.json())
-      .then(data => {
-        setTasks(data);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error("⚠️ Failed to fetch tasks:", err);
-        setLoading(false);
-      });
+  
+  const getAuthHeaders = async () => {
+    const token = await auth.currentUser?.getIdToken();
+    if (token) tokenRef.current = token; 
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    };
+  };
+
+  const fetchTasks = async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE}/tasks`, { headers });
+      if (res.ok) {
+        setTasks(await res.json());
+      }
+    } catch (err) {
+      console.error("⚠️ Failed to fetch directives:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const activeTask = tasks.find(t => t.status === 'Pending');
@@ -69,69 +79,79 @@ export default function Tasks() {
     return { tag: 'TARGET', cleanName: name };
   };
 
-  const handleCompliance = (taskId, isCompleted, manualReason = null) => {
+  const handleCompliance = async (taskId, isCompleted, manualReason = null) => {
     let reason = "No reason provided.";
     if (!isCompleted) {
       if (manualReason) {
         reason = manualReason; 
       } else {
         reason = prompt("💀 THREAT DETECTED. Enter your excuse for failing this directive:");
-        if (reason === null) return;
+        if (reason === null) return; 
       }
     }
 
     setShowFailureMode(false); 
     setIsFocusMode(false); 
 
-    // 🔥 CLOUD SYNC FIXED - Removed /api/
-    fetch(`${API_BASE}/check-compliance`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        task_id: taskId,
-        completed: isCompleted,
-        failure_reason: reason
-      })
-    })
-    .then(res => res.json())
-    .then(data => {
-      alert(`[SYSTEM]: ${data.message}`);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE}/check-compliance`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          task_id: taskId,
+          completed: isCompleted,
+          failure_reason: reason
+        })
+      });
+      
+      const data = await res.json();
+      alert(`[SYSTEM]: ${data.message || 'Protocol updated.'}`);
       fetchTasks(); 
-    })
-    .catch(err => console.error("⚠️ Compliance check failed:", err));
+    } catch (err) {
+      console.error("⚠️ Compliance API failure:", err);
+    }
   };
 
-  // 🔥 THE DEAD MAN'S SWITCH 1: React Unmount (User clicks another UI tab)
+  
   useEffect(() => {
     return () => {
-      if (isFocusModeRef.current && activeTaskRef.current) {
-        const payload = JSON.stringify({
-          task_id: activeTaskRef.current.id,
-          completed: false,
-          failure_reason: "System detected user abandoned the terminal during Strict Mode."
-        });
-        const blob = new Blob([payload], { type: 'application/json' });
-        // 🔥 CLOUD SYNC FIXED - Removed /api/
-        navigator.sendBeacon(`${API_BASE}/check-compliance`, blob);
+      if (isFocusModeRef.current && activeTaskRef.current && tokenRef.current) {
+        fetch(`${API_BASE}/check-compliance`, {
+          method: 'POST',
+          keepalive: true,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${tokenRef.current}`
+          },
+          body: JSON.stringify({
+            task_id: activeTaskRef.current.id,
+            completed: false,
+            failure_reason: "System detected user abandoned the terminal during Strict Mode."
+          })
+        }).catch(() => {});
       }
     };
   }, []);
 
-  // 🔥 THE DEAD MAN'S SWITCH 2: The Alt+F4 & Tab Close Exploit Fix
+  
   useEffect(() => {
     const handleBeforeUnload = (e) => {
-      if (isFocusModeRef.current && activeTaskRef.current) {
-        // Fire the un-killable beacon
-        const payload = JSON.stringify({
-          task_id: activeTaskRef.current.id,
-          completed: false,
-          failure_reason: "System detected user forcibly closed the browser during Strict Mode."
-        });
-        const blob = new Blob([payload], { type: 'application/json' });
-        // 🔥 CLOUD SYNC FIXED - Removed /api/
-        navigator.sendBeacon(`${API_BASE}/check-compliance`, blob);
+      if (isFocusModeRef.current && activeTaskRef.current && tokenRef.current) {
+        fetch(`${API_BASE}/check-compliance`, {
+          method: 'POST',
+          keepalive: true,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${tokenRef.current}`
+          },
+          body: JSON.stringify({
+            task_id: activeTaskRef.current.id,
+            completed: false,
+            failure_reason: "System detected user forcibly closed the browser during Strict Mode."
+          })
+        }).catch(() => {});
         
-        // This triggers the browser's native "Leave Site?" popup warning
         e.preventDefault();
         e.returnValue = '';
       }
@@ -141,12 +161,12 @@ export default function Tasks() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, []);
 
-  // 🔥 TAB SWITCHING LISTENER
+
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden && isFocusModeRef.current && activeTaskRef.current) {
         setIsFocusMode(false);
-        alert("💀 FATAL VIOLATION: TAB SWITCH DETECTED.\nFocus broken. Immediate penalty deployed.");
+        alert("💀 FATAL VIOLATION: TAB SWITCH DETECTED.\nFocus broken. Immediate penalty deployed to Calendar.");
         handleCompliance(activeTaskRef.current.id, false, "System detected tab-switching/distraction during Strict Mode.");
       }
     };
@@ -164,13 +184,14 @@ export default function Tasks() {
       }, 1000);
     } else if (isFocusMode && timeLeft === 0) {
       setIsFocusMode(false);
-      handleCompliance(activeTask.id, true);
+      handleCompliance(activeTask?.id, true);
     }
     return () => clearInterval(timer);
   }, [isFocusMode, timeLeft, activeTask]);
 
-  const startFocusProtocol = () => {
+  const startFocusProtocol = async () => {
     if (!activeTask) return;
+    await getAuthHeaders(); 
     setShowFocusWarning(false);
     setIsFocusMode(true);
     setTimeLeft(activeTask.duration_hours * 3600); 
@@ -184,52 +205,61 @@ export default function Tasks() {
   };
 
   return (
-    <div className="flex flex-col h-full pb-10 relative">
+    <div className="flex flex-col h-full pb-10 relative bg-[#050505] min-h-screen text-white font-sans">
+      
+      {/* V2 HEADER */}
       <motion.header 
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="flex justify-between items-center mb-6 border-b border-white/10 pb-4"
+        initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
+        className="flex justify-between items-center mb-8 border-b border-white/10 pb-6 pt-4 px-2"
       >
-        <div>
-          <h2 className="text-2xl md:text-3xl font-display tracking-widest text-white uppercase flex items-center gap-3">
-            <Activity className="text-gold" /> ONGOING TASKS
-          </h2>
-          <p className="text-xs text-gray-500 tracking-widest uppercase mt-1">Manage & track your daily execution</p>
+        <div className="flex items-center gap-4">
+          <div className="p-2 bg-white/5 rounded-lg shadow-sm border border-white/5">
+            <Activity className="w-8 h-8 text-gold drop-shadow-sm" />
+          </div>
+          <div>
+            <h2 className="text-2xl md:text-3xl font-display tracking-widest text-white uppercase leading-none">ONGOING TASKS</h2>
+            <p className="text-xs text-gray-500 font-tech tracking-widest mt-1 uppercase font-bold">Manage & Track Daily Execution</p>
+          </div>
         </div>
       </motion.header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 px-2">
         
-        {/* PANE 1: THE QUEUE (Greys out during Strict Mode) */}
+        {/* ========================================== */}
+        {/* PANE 1: THE QUEUE                            */}
+        {/* ========================================== */}
         <motion.div 
           initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6, delay: 0.1 }}
-          className={`lg:col-span-3 flex flex-col gap-6 transition-all duration-500 ${isFocusMode ? 'opacity-40 pointer-events-none grayscale' : ''}`}
+          className={`lg:col-span-3 flex flex-col gap-6 transition-all duration-500 ${isFocusMode ? 'opacity-30 pointer-events-none grayscale blur-sm' : ''}`}
         >
-          <div className="glass-panel p-4 rounded border-white/5 shadow-[0_4px_20px_rgba(0,0,0,0.5)] h-[400px] overflow-y-auto custom-scrollbar">
-            <h3 className="text-xs text-gray-500 tracking-widest uppercase mb-4 flex justify-between">
-              My Tasks <span className="text-gold">{tasks.length}</span>
+          <div className="p-5 rounded-xl border border-white/5 bg-[#0a0a0a] shadow-sm h-[500px] overflow-y-auto custom-scrollbar flex flex-col backdrop-blur-md">
+            <h3 className="text-xs text-gray-400 font-display tracking-widest uppercase mb-5 flex justify-between items-center font-bold border-b border-white/5 pb-3">
+              Task Queue <span className="bg-gold/10 text-gold px-2 py-0.5 rounded shadow-sm border border-gold/20">{tasks.length}</span>
             </h3>
-            <div className="flex flex-col gap-3">
+            
+            <div className="flex flex-col gap-3 flex-grow">
               {loading ? (
-                <div className="text-gold font-tech animate-pulse text-xs">Fetching directives...</div>
+                <div className="text-gold font-tech animate-pulse text-xs text-center mt-10">Fetching Directives...</div>
               ) : tasks.length === 0 ? (
-                <div className="text-gray-500 font-tech text-xs italic">No directives generated.</div>
+                <div className="text-gray-500 font-tech text-xs italic text-center mt-10">No directives generated.</div>
               ) : (
                 tasks.map((task) => {
                   const { tag, cleanName } = parseTaskName(task.task_name);
                   return (
-                    <div key={task.id} className={`border p-3 rounded cursor-pointer relative overflow-hidden transition-all
+                    <div key={task.id} className={`border p-3.5 rounded-lg relative overflow-hidden transition-all shadow-sm
                       ${task.status === 'Pending' ? 'border-gold/40 bg-gold/5 hover:border-gold' : 
-                        task.status === 'Done' ? 'border-success/20 bg-success/5 opacity-70' : 
-                        'border-danger/20 bg-danger/5 opacity-70'}`}>
-                      <div className={`absolute left-0 top-0 w-1 h-full ${task.status === 'Pending' ? 'bg-gold' : task.status === 'Done' ? 'bg-success' : 'bg-danger'}`}></div>
-                      <div className="flex justify-between items-start mb-1">
-                        <div className="flex flex-col gap-1">
-                          <span className={`text-[9px] uppercase tracking-widest inline-block w-max px-1.5 py-0.5 rounded border ${task.status === 'Pending' ? 'border-gold/50 text-gold bg-gold/10' : task.status === 'Done' ? 'border-success/50 text-success bg-success/10' : 'border-danger/50 text-danger bg-danger/10'}`}>
+                        task.status === 'Done' ? 'border-success/30 bg-success/5 opacity-70' : 
+                        'border-danger/30 bg-danger/5 opacity-70'}`}>
+                      <div className={`absolute left-0 top-0 w-1.5 h-full ${task.status === 'Pending' ? 'bg-gold shadow-[0_0_10px_#fbbf24]' : task.status === 'Done' ? 'bg-success' : 'bg-danger'}`}></div>
+                      <div className="flex justify-between items-start">
+                        <div className="flex flex-col gap-1.5">
+                          <span className={`text-[9px] uppercase tracking-widest inline-block w-max px-2 py-0.5 rounded font-bold
+                            ${task.status === 'Pending' ? 'border border-gold/50 text-gold bg-gold/10' : 
+                              task.status === 'Done' ? 'border border-success/50 text-success bg-success/10' : 
+                              'border border-danger/50 text-danger bg-danger/10'}`}>
                             {tag}
                           </span>
-                          <span className={`text-xs font-tech tracking-wide ${task.status === 'Failed' ? 'text-gray-500 line-through' : 'text-white'}`}>
+                          <span className={`text-xs font-tech font-bold leading-relaxed ${task.status === 'Failed' ? 'text-gray-500 line-through' : 'text-white'}`}>
                             {cleanName}
                           </span>
                         </div>
@@ -242,96 +272,111 @@ export default function Tasks() {
           </div>
         </motion.div>
 
-        {/* PANE 2: EXECUTION ZONE */}
+        {/* ========================================== */}
+        {/* PANE 2: EXECUTION ZONE                     */}
+        {/* ========================================== */}
         <motion.div 
-          initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }}
-          className="lg:col-span-6 flex flex-col gap-6"
+          initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6, delay: 0.2 }}
+          className="lg:col-span-6 flex flex-col gap-6 relative"
         >
-          <div className="glass-panel border-cyan-500/20 bg-cyan-500/5 p-4 rounded text-center shadow-[0_0_15px_rgba(6,182,212,0.05)]">
-            <p className="text-cyan-100 italic tracking-wide">"{quote}"</p>
-            <p className="text-[10px] text-cyan-500 uppercase tracking-widest mt-2">— Execution Enforcer AI</p>
+          {/* AI Enforcer Quote Box */}
+          <div className={`p-4 rounded-xl text-center transition-all duration-500 shadow-sm border
+            ${isFocusMode ? 'border-danger/30 bg-danger/10 shadow-[0_0_20px_rgba(239,68,68,0.2)]' : 'border-cyan-500/20 bg-cyan-500/5'}`}>
+            <p className={`text-sm md:text-base italic tracking-wide font-display font-bold ${isFocusMode ? 'text-danger' : 'text-cyan-100'}`}>"{quote}"</p>
+            <p className={`text-[10px] uppercase tracking-widest mt-2 font-bold ${isFocusMode ? 'text-danger/70' : 'text-cyan-500'}`}>— Execution Enforcer AI</p>
           </div>
 
-          <div className={`glass-panel rounded p-8 relative overflow-hidden flex-grow flex flex-col transition-all duration-500
-            ${isFocusMode ? 'border-danger shadow-[0_0_50px_rgba(239,68,68,0.3)] bg-black scale-105 z-10' : 'border-gold/40 shadow-[0_0_30px_rgba(251,191,36,0.1)]'}`}>
-            <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${isFocusMode ? 'from-danger/10 via-danger to-danger/10 animate-pulse' : 'from-gold/10 via-gold to-gold/10'}`}></div>
+          {/* MAIN EXECUTION SCREEN */}
+          <div className={`rounded-xl p-8 relative overflow-hidden flex-grow flex flex-col transition-all duration-700 border
+            ${isFocusMode ? 'border-danger/80 shadow-[0_0_80px_rgba(239,68,68,0.4)] bg-[#030000] scale-[1.02] z-20' : 'border-gold/40 shadow-[0_0_30px_rgba(251,191,36,0.1)] bg-[#0a0a0a]'}`}>
+            
+            <div className={`absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r 
+              ${isFocusMode ? 'from-danger via-danger to-danger animate-pulse shadow-[0_0_15px_#ef4444]' : 'from-gold/10 via-gold to-gold/10'}`}></div>
             
             {!activeTask ? (
                <div className="flex-grow flex flex-col items-center justify-center text-gray-500">
-                 <CheckCircle2 className="w-16 h-16 mb-4 text-success opacity-50" />
-                 <p className="font-display tracking-widest uppercase">All tasks cleared.</p>
+                 <CheckCircle2 className="w-20 h-20 mb-6 text-success opacity-60 drop-shadow-[0_0_15px_rgba(16,185,129,0.4)]" />
+                 <p className="font-display tracking-widest uppercase font-bold text-lg">All Directives Cleared.</p>
                </div>
             ) : (
               <>
                 <div className="flex justify-between items-start mb-6">
                   <div className="w-full">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className={`w-3 h-3 rounded-full animate-pulse ${isFocusMode ? 'bg-danger shadow-[0_0_8px_#ef4444]' : 'bg-gold shadow-[0_0_8px_#fbbf24]'}`}></div>
-                      <span className={`text-[10px] border px-2 py-0.5 rounded uppercase tracking-widest ${isFocusMode ? 'border-danger/50 text-danger bg-danger/10' : 'border-gold/50 text-gold bg-gold/10'}`}>
-                        {isFocusMode ? 'STRICT MODE ACTIVE' : 'ACTIVE TARGET'}
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className={`w-3.5 h-3.5 rounded-full animate-pulse ${isFocusMode ? 'bg-danger shadow-[0_0_10px_#ef4444]' : 'bg-gold shadow-[0_0_10px_#fbbf24]'}`}></div>
+                      <span className={`text-[10px] border px-2.5 py-1 rounded font-bold uppercase tracking-widest shadow-sm
+                        ${isFocusMode ? 'border-danger/50 text-white bg-danger shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'border-gold/50 text-gold bg-gold/10'}`}>
+                        {isFocusMode ? 'STRICT MODE LOCKED IN' : 'ACTIVE TARGET'}
                       </span>
                     </div>
-                    <h2 className="text-2xl md:text-4xl text-white font-display tracking-widest drop-shadow-md leading-tight uppercase">
+                    <h2 className={`text-2xl md:text-4xl font-display font-bold tracking-widest drop-shadow-sm leading-tight uppercase
+                      ${isFocusMode ? 'text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]' : 'text-white'}`}>
                       {parseTaskName(activeTask.task_name).cleanName}
                     </h2>
                   </div>
                 </div>
 
-                <div className={`my-8 py-8 rounded-lg text-center flex flex-col justify-center items-center transition-all
-                  ${isFocusMode ? 'bg-black border border-danger/30 shadow-[inset_0_0_50px_rgba(239,68,68,0.05)]' : 'bg-background/50 border border-white/5'}`}>
-                  <div className={`text-xs tracking-widest uppercase mb-4 flex items-center justify-center gap-2 ${isFocusMode ? 'text-danger' : 'text-gray-500'}`}>
+                {/* THE TIMER DISPLAY */}
+                <div className={`my-8 py-10 rounded-xl text-center flex flex-col justify-center items-center transition-all shadow-inner border
+                  ${isFocusMode ? 'bg-[#050000] border-danger/50 shadow-[inset_0_0_80px_rgba(239,68,68,0.15)]' : 'bg-[#121212] border-white/5'}`}>
+                  <div className={`text-xs tracking-widest font-bold uppercase mb-4 flex items-center justify-center gap-2 ${isFocusMode ? 'text-danger drop-shadow-sm' : 'text-gray-500'}`}>
                     <Clock className="w-4 h-4"/> Time Remaining
                   </div>
-                  <div className={`text-6xl md:text-7xl font-tech ${isFocusMode ? 'text-danger drop-shadow-[0_0_25px_rgba(239,68,68,0.9)] animate-pulse' : 'text-gold drop-shadow-[0_0_20px_rgba(251,191,36,0.5)]'}`}>
+                  <div className={`text-6xl md:text-8xl font-tech font-bold ${isFocusMode ? 'text-danger drop-shadow-[0_0_30px_rgba(239,68,68,1)] animate-pulse' : 'text-gold drop-shadow-[0_0_20px_rgba(251,191,36,0.5)]'}`}>
                     {isFocusMode ? formatTime(timeLeft) : `${activeTask.duration_hours}:00:00`}
                   </div>
                 </div>
 
+                {/* CONTROLS */}
                 <div className="mt-auto">
                   {!isFocusMode ? (
                     <div className="flex flex-col gap-4">
-                      <button 
+                      <motion.button 
+                        whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                         onClick={() => setShowFocusWarning(true)}
-                        className="w-full bg-danger/20 border-2 border-danger text-danger py-5 rounded font-display tracking-widest text-xl hover:bg-danger hover:text-white transition-all flex justify-center items-center gap-3 shadow-[0_0_20px_rgba(239,68,68,0.3)] hover:shadow-[0_0_35px_rgba(239,68,68,0.6)] uppercase"
+                        className="w-full bg-danger/10 border-2 border-danger text-danger py-5 rounded-lg font-display font-bold tracking-widest text-xl hover:bg-danger hover:text-black transition-all flex justify-center items-center gap-3 shadow-[0_0_20px_rgba(239,68,68,0.2)] hover:shadow-[0_0_40px_rgba(239,68,68,0.6)] uppercase"
                       >
                         <Zap className="w-6 h-6"/> INITIATE STRICT MODE
-                      </button>
+                      </motion.button>
                       
-                      <div className="flex gap-4 mt-2">
-                        <button onClick={() => handleCompliance(activeTask.id, true)} className="flex-1 border border-success/30 text-success bg-success/5 hover:bg-success hover:text-background py-2 rounded text-xs tracking-widest font-tech transition-all flex justify-center items-center gap-2 opacity-70 hover:opacity-100">
+                      <div className="flex flex-col md:flex-row gap-4 mt-2">
+                        <button onClick={() => handleCompliance(activeTask.id, true)} className="flex-1 border border-success/40 text-success bg-success/5 hover:bg-success hover:text-black py-3 rounded-lg text-xs font-bold tracking-widest font-tech transition-all flex justify-center items-center gap-2 shadow-[0_0_10px_rgba(16,185,129,0.1)]">
                           <CheckCircle2 className="w-4 h-4"/> MANUAL BYPASS (DONE)
                         </button>
-                        <button onClick={() => setShowFailureMode(!showFailureMode)} className="flex-1 border border-danger/30 text-danger bg-danger/5 hover:bg-danger hover:text-white py-2 rounded text-xs tracking-widest font-tech transition-all flex justify-center items-center gap-2 opacity-70 hover:opacity-100">
+                        <button onClick={() => setShowFailureMode(!showFailureMode)} className="flex-1 border border-danger/40 text-danger bg-danger/5 hover:bg-danger hover:text-black py-3 rounded-lg text-xs font-bold tracking-widest font-tech transition-all flex justify-center items-center gap-2 shadow-[0_0_10px_rgba(239,68,68,0.1)]">
                           <XCircle className="w-4 h-4"/> REPORT FAILURE
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <button 
+                    <motion.button 
+                      whileHover={{ scale: 1.02 }}
                       onClick={() => handleCompliance(activeTask.id, false, "Surrendered during Strict Mode")}
-                      className="w-full bg-black border border-danger/50 text-gray-500 py-5 rounded font-display tracking-widest hover:bg-danger hover:text-white transition-all flex justify-center items-center gap-2"
+                      className="w-full bg-black border-2 border-danger/80 text-danger py-5 rounded-lg font-display font-bold tracking-widest hover:bg-danger hover:text-white transition-all flex justify-center items-center gap-3 shadow-[0_0_30px_rgba(239,68,68,0.4)] uppercase"
                     >
-                      <Skull className="w-5 h-5"/> SURRENDER AND ACCEPT CALENDAR PENALTY
-                    </button>
+                      <Skull className="w-6 h-6"/> SURRENDER TO PENALTY
+                    </motion.button>
                   )}
                 </div>
               </>
             )}
 
+            {/* FAILURE REASON MODAL */}
             <AnimatePresence>
               {showFailureMode && activeTask && !isFocusMode && (
                 <motion.div 
                   initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
-                  className="glass-panel border-danger border p-6 rounded shadow-[0_0_20px_rgba(244,63,94,0.15)] mt-4"
+                  className="border-danger border p-6 rounded-xl shadow-[0_0_20px_rgba(244,63,94,0.15)] mt-6 bg-[#0a0a0a]"
                 >
-                  <h3 className="text-danger tracking-widest uppercase flex items-center gap-2 mb-2 font-display text-lg">
-                    <AlertTriangle className="w-5 h-5" /> Reason Required
+                  <h3 className="text-danger tracking-widest uppercase flex items-center gap-2 mb-2 font-display font-bold text-lg">
+                    <AlertTriangle className="w-5 h-5" /> Narrative Logging Required
                   </h3>
-                  <div className="grid grid-cols-2 gap-3 mt-4">
-                    <FailureBtn label="YouTube" onClick={() => handleCompliance(activeTask.id, false, "Distracted by YouTube")} />
-                    <FailureBtn label="Social Media" onClick={() => handleCompliance(activeTask.id, false, "Scrolling Social Media")} />
-                    <FailureBtn label="Tired / Sleepy" onClick={() => handleCompliance(activeTask.id, false, "Burnout / Too tired")} />
-                    <FailureBtn label="Lack of Focus" onClick={() => handleCompliance(activeTask.id, false, "Lost focus on the objective")} />
+                  <p className="text-[10px] text-gray-400 font-tech uppercase font-bold mb-4">Select failure parameter for behavioral analysis.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <FailureBtn label="YouTube Hole" onClick={() => handleCompliance(activeTask.id, false, "Distracted by YouTube")} />
+                    <FailureBtn label="Social Media Doomscroll" onClick={() => handleCompliance(activeTask.id, false, "Scrolling Social Media")} />
+                    <EnergyFailureBtn label="Energy Depletion" onClick={() => handleCompliance(activeTask.id, false, "Burnout / Too tired")} />
+                    <FailureBtn label="Attention Drift" onClick={() => handleCompliance(activeTask.id, false, "Lost focus on the objective")} />
                   </div>
                 </motion.div>
               )}
@@ -339,27 +384,29 @@ export default function Tasks() {
           </div>
         </motion.div>
 
-        {/* PANE 3: AI ENFORCER & RESTRICTED WALL OF SHAME (Greys out during Strict Mode) */}
+        {/* ========================================== */}
+        {/* PANE 3: WALL OF SHAME                      */}
+        {/* ========================================== */}
         <motion.div 
           initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6, delay: 0.3 }}
-          className={`lg:col-span-3 flex flex-col gap-5 transition-all duration-500 ${isFocusMode ? 'opacity-40 pointer-events-none grayscale' : ''}`}
+          className={`lg:col-span-3 flex flex-col gap-5 transition-all duration-500 ${isFocusMode ? 'opacity-30 pointer-events-none grayscale blur-sm' : ''}`}
         >
-          <div className="glass-panel p-0 border-2 border-danger/40 bg-black/80 rounded relative overflow-hidden shadow-[0_0_30px_rgba(244,63,94,0.15)] h-full flex flex-col">
-            <div className="bg-danger/20 border-b border-danger/40 p-4 flex justify-between items-center">
-              <h3 className="text-danger text-xs font-tech tracking-widest uppercase flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4"/> PENALTY LOGS
+          <div className="p-0 border border-danger/40 bg-black/80 rounded-xl relative overflow-hidden shadow-[0_0_30px_rgba(244,63,94,0.15)] h-full flex flex-col backdrop-blur-md">
+            <div className="bg-danger/10 border-b border-danger/30 p-4 flex justify-between items-center">
+              <h3 className="text-danger text-sm font-display font-bold tracking-widest uppercase flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5"/> PENALTY LOGS
               </h3>
-              <span className="text-[9px] bg-danger text-black font-bold px-2 py-0.5 rounded uppercase tracking-widest">Restricted</span>
+              <span className="text-[9px] bg-danger text-white font-bold px-2 py-0.5 rounded uppercase tracking-widest shadow-[0_0_10px_rgba(239,68,68,0.5)]">Restricted</span>
             </div>
             
-            <div className="p-4 overflow-y-auto custom-scrollbar font-mono flex-grow">
+            <div className="p-5 overflow-y-auto custom-scrollbar font-mono flex-grow bg-transparent">
               {tasks.filter(t => t.status === 'Failed').length > 0 ? (
                 tasks.filter(t => t.status === 'Failed').map(task => {
                   const { cleanName } = parseTaskName(task.task_name);
                   return (
-                    <div key={task.id} className="mb-5 border-l-2 border-danger pl-3 last:mb-0">
-                      <div className="text-[10px] text-danger mb-1 uppercase tracking-wide">TARGET: {cleanName}</div>
-                      <div className="text-[10px] text-gray-500 mb-3 bg-white/5 p-1.5 border border-white/5 rounded">CAUSE: {task.failure_reason}</div>
+                    <div key={task.id} className="mb-6 border-l-4 border-danger pl-4 last:mb-0">
+                      <div className="text-xs font-bold text-danger mb-1.5 uppercase tracking-wide drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]">TARGET: {cleanName}</div>
+                      <div className="text-[10px] text-gray-400 font-bold mb-3 bg-white/5 p-2 border border-white/5 rounded-lg shadow-inner">CAUSE: {task.failure_reason}</div>
                       
                       <button 
                         disabled={isFocusMode}
@@ -369,20 +416,20 @@ export default function Tasks() {
                             handleCompliance(task.id, true);
                           }
                         }}
-                        className={`w-full text-[9px] px-2 py-1.5 rounded tracking-widest transition-all flex items-center justify-center gap-1
+                        className={`w-full text-[10px] font-bold px-3 py-2 rounded-lg tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-sm
                           ${isFocusMode 
                             ? 'bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed' 
                             : 'bg-success/10 text-success border border-success/30 hover:bg-success hover:text-black'}`}
                       >
-                        <Zap className="w-3 h-3" /> REDEEM
+                        <Zap className="w-3.5 h-3.5" /> REDEEM SCHEDULE
                       </button>
                     </div>
                   );
                 })
               ) : (
-                <div className="flex flex-col items-center justify-center h-full opacity-50 py-10">
-                  <ShieldAlert className="w-10 h-10 text-success mb-2" />
-                  <div className="text-[10px] text-success tracking-widest uppercase">Logs Clear. No Violations.</div>
+                <div className="flex flex-col items-center justify-center h-full opacity-60 py-10">
+                  <ShieldAlert className="w-12 h-12 text-success mb-4 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]" />
+                  <div className="text-[10px] text-success tracking-widest font-bold uppercase text-center">Logs Clear.<br/>No Active Violations.</div>
                 </div>
               )}
             </div>
@@ -391,55 +438,56 @@ export default function Tasks() {
 
       </div>
 
+      {/* V2 STRICT MODE WARNING MODAL */}
       <AnimatePresence>
         {showFocusWarning && (
           <motion.div 
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4"
           >
             <motion.div 
               initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
-              className="glass-panel border-2 border-danger max-w-lg w-full p-8 rounded shadow-[0_0_50px_rgba(239,68,68,0.3)] text-center relative overflow-hidden"
+              className="bg-[#050000] border-2 border-danger max-w-lg w-full p-8 md:p-10 rounded-2xl shadow-[0_0_80px_rgba(239,68,68,0.4)] text-center relative overflow-hidden"
             >
-              <div className="absolute top-0 left-0 w-full h-2 bg-danger animate-pulse"></div>
+              <div className="absolute top-0 left-0 w-full h-2 bg-danger animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.8)]"></div>
 
-              <ShieldAlert className="w-16 h-16 text-danger mx-auto mb-4" />
+              <ShieldAlert className="w-16 h-16 text-danger mx-auto mb-5 drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
 
-              <h2 className="text-3xl font-display text-white tracking-widest uppercase mb-2">Point of No Return</h2>
+              <h2 className="text-3xl font-display font-bold text-white tracking-widest uppercase mb-2">Point of No Return</h2>
 
-              <p className="text-danger font-tech text-sm tracking-widest uppercase mb-6">Strict Mode Engagement</p>
+              <p className="text-danger font-tech text-sm font-bold tracking-widest uppercase mb-8">Strict Mode Engagement</p>
 
-              <div className="bg-danger/10 border border-danger/30 p-4 rounded text-left mb-8">
-                <ul className="text-gray-300 font-tech text-sm space-y-3">
-                  <li className="flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 mt-0.5 text-danger flex-shrink-0" />
-                    <div>Timer will lock for {activeTask?.duration_hours} hour(s).</div>
+              <div className="bg-danger/10 border border-danger/30 p-5 rounded-xl text-left mb-10 shadow-[inset_0_0_20px_rgba(239,68,68,0.1)]">
+                <ul className="text-gray-300 font-tech text-sm space-y-4 font-bold">
+                  <li className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 mt-0.5 text-danger flex-shrink-0" />
+                    <div>The terminal will lock for <span className="text-danger">{activeTask?.duration_hours} hour(s)</span>.</div>
                   </li>
-                  <li className="flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 mt-0.5 text-danger flex-shrink-0" />
+                  <li className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 mt-0.5 text-danger flex-shrink-0" />
                     <div>
-                      <span className="font-bold text-white">STAY ON THIS EXACT SCREEN.</span> Switching browser tabs OR clicking other menu tabs (like Home or History) will instantly fail the task.
+                      <span className="font-extrabold text-white uppercase">Stay on this exact screen.</span> Switching browser tabs or clicking other UI navigation will instantly deploy a failure penalty.
                     </div>
                   </li>
-                  <li className="flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 mt-0.5 text-danger flex-shrink-0" />
-                    <div>A penalty will be immediately dispatched to Google Calendar upon failure.</div>
+                  <li className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 mt-0.5 text-danger flex-shrink-0" />
+                    <div>If you fail, the AI will immediately hijack your Google Calendar.</div>
                   </li>
                 </ul>
               </div>
 
-              <div className="flex gap-4">
+              <div className="flex flex-col md:flex-row gap-4">
                 <button 
                   onClick={() => setShowFocusWarning(false)}
-                  className="flex-1 border border-gray-600 text-gray-400 py-3 rounded font-display tracking-widest hover:bg-gray-800 transition-colors"
+                  className="flex-1 border-2 border-gray-600 text-gray-400 py-3.5 rounded-lg font-display font-bold tracking-widest hover:bg-gray-800 transition-colors uppercase"
                 >
                   ABORT
                 </button>
                 <button 
                   onClick={startFocusProtocol}
-                  className="flex-1 bg-danger text-white py-3 rounded font-display tracking-widest hover:bg-red-500 hover:shadow-[0_0_20px_rgba(239,68,68,0.5)] transition-all"
+                  className="flex-1 bg-danger text-white py-3.5 rounded-lg font-display font-bold tracking-widest hover:bg-red-600 hover:shadow-[0_0_30px_rgba(239,68,68,0.6)] transition-all uppercase"
                 >
-                  PROCEED
+                  ENGAGE PROTOCOL
                 </button>
               </div>
             </motion.div>
@@ -450,11 +498,23 @@ export default function Tasks() {
   );
 }
 
+// V2 Enhanced Buttons
 function FailureBtn({ label, onClick }) {
   return (
     <button 
       onClick={onClick}
-      className="bg-danger/10 border border-danger/30 text-danger/80 py-2 rounded text-[10px] tracking-widest font-tech uppercase hover:bg-danger hover:text-white transition-colors"
+      className="bg-danger/5 border border-danger/30 text-danger/90 py-3 px-2 rounded-lg text-[10px] md:text-xs font-bold tracking-widest font-tech uppercase hover:bg-danger hover:text-black transition-all shadow-[0_0_10px_rgba(239,68,68,0.1)] hover:shadow-[0_0_20px_rgba(239,68,68,0.4)]"
+    >
+      {label}
+    </button>
+  );
+}
+
+function EnergyFailureBtn({ label, onClick }) {
+  return (
+    <button 
+      onClick={onClick}
+      className="bg-yellow-500/5 border border-yellow-500/30 text-yellow-500/90 py-3 px-2 rounded-lg text-[10px] md:text-xs font-bold tracking-widest font-tech uppercase hover:bg-yellow-500 hover:text-black transition-all shadow-[0_0_10px_rgba(234,179,8,0.1)] hover:shadow-[0_0_20px_rgba(234,179,8,0.4)]"
     >
       {label}
     </button>

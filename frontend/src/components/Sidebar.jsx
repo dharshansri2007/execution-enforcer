@@ -1,64 +1,156 @@
-import React from 'react';
-import { ShieldAlert, Home, Activity, History, Brain, Calendar, ShoppingBag, Settings, User } from 'lucide-react';
-import { motion } from 'framer-motion';
+import React, { useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { ShieldAlert, Home, Activity, History, Brain, Calendar, ShoppingBag, Settings, User, ChevronLeft, ChevronRight } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
-export default function Sidebar({ activeTab, setActiveTab }) {
+export default function Sidebar() {
+  const location = useLocation();
+  const currentPath = location.pathname;
+  
+  
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
   return (
-    <nav className="w-20 md:w-64 glass-panel border-r border-gold/20 flex flex-col h-screen z-10 sticky top-0 transition-all bg-background/90 backdrop-blur-md">
-      <div className="p-4 md:p-6 border-b border-gold/10 flex items-center gap-3">
-        <ShieldAlert className="text-gold w-10 h-10 shadow-neon-gold rounded-full flex-shrink-0" />
-        <div className="hidden md:block">
-          <h1 className="font-display text-xl tracking-widest text-white leading-tight">EXECUTION</h1>
-          <p className="text-gold text-xs tracking-widest uppercase">Operator: SD</p>
+    <motion.nav 
+      animate={{ width: isCollapsed ? 80 : 260 }} 
+      transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+      className="flex flex-col h-screen z-50 sticky top-0 bg-[#030303] border-r border-white/5 overflow-visible transform-gpu shadow-[10px_0_30px_rgba(0,0,0,0.5)] flex-shrink-0"
+    >
+      {/* HEADER */}
+      <div className="p-4 md:p-6 border-b border-white/5 flex items-center gap-4 h-24 overflow-hidden relative">
+        <div className="relative">
+          <div className="absolute inset-0 bg-gold/20 blur-md rounded-full animate-pulse"></div>
+          <ShieldAlert className="text-gold w-10 h-10 relative z-10 drop-shadow-[0_0_10px_rgba(251,191,36,0.8)]" />
         </div>
+        
+        <AnimatePresence mode="wait">
+          {!isCollapsed && (
+            <motion.div 
+              initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}
+              className="whitespace-nowrap flex flex-col justify-center"
+            >
+              <h1 className="font-display text-xl tracking-widest text-white leading-none mb-1">EXECUTION</h1>
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse shadow-[0_0_5px_#10b981]"></div>
+                <p className="text-gray-500 text-[10px] font-tech font-bold tracking-[0.2em] uppercase">Operator: {currentUser?.displayName || 'UNKNOWN'}</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      <div className="flex flex-col flex-grow py-6 px-2 md:px-4 gap-2 overflow-y-auto custom-scrollbar">
-        <NavButton icon={<Home />} label="Home" active={activeTab === 'home'} onClick={() => setActiveTab('home')} />
-        <NavButton icon={<Activity />} label="Ongoing Tasks" active={activeTab === 'ongoing'} onClick={() => setActiveTab('ongoing')} />
+      {/* CORE NAVIGATION */}
+      <div className="flex flex-col flex-grow py-6 px-3 gap-1.5 overflow-y-auto overflow-x-hidden custom-scrollbar">
+        <NavButton to="/home" currentPath={currentPath} icon={<Home />} label="Home" isCollapsed={isCollapsed} />
+        <NavButton to="/tasks" currentPath={currentPath} icon={<Activity />} label="Ongoing Tasks" isCollapsed={isCollapsed} />
         
-        <div className="my-4 border-t border-white/5"></div>
+        <div className="my-3 mx-2 border-t border-white/5"></div>
         
-        <NavButton icon={<History />} label="History" active={activeTab === 'history'} onClick={() => setActiveTab('history')} />
-        <NavButton icon={<Brain />} label="Intelligence Logs" active={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')} badge="BETA" />
-        <NavButton icon={<Calendar />} label="G-Cal Sync" active={activeTab === 'gcal'} onClick={() => setActiveTab('gcal')} />
-        <NavButton icon={<ShoppingBag />} label="Store" active={activeTab === 'store'} onClick={() => setActiveTab('store')} />
+        <NavButton to="/history" currentPath={currentPath} icon={<History />} label="Ledger" isCollapsed={isCollapsed} />
+        <NavButton to="/intelligence" currentPath={currentPath} icon={<Brain />} label="Intelligence" isCollapsed={isCollapsed} badge="BETA" />
+        <NavButton to="/gcal" currentPath={currentPath} icon={<Calendar />} label="G-Cal Sync" isCollapsed={isCollapsed} />
+        <NavButton to="/store" currentPath={currentPath} icon={<ShoppingBag />} label="Rewards" isCollapsed={isCollapsed} />
       </div>
       
-      <div className="mt-auto border-t border-gold/10 p-2 md:p-4 flex flex-col gap-2">
-        <NavButton icon={<User />} label="My Profile" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
-        
-        {/* 🔥 THE NEON GLOWING SYSTEM CONFIG BUTTON */}
+      {/* BOTTOM SECTION */}
+      <div className="mt-auto border-t border-white/5 p-3 flex flex-col gap-1.5 bg-[#050505]">
+        <NavButton to="/profile" currentPath={currentPath} icon={<User />} label="My Profile" isCollapsed={isCollapsed} />
+        <NavButton to="/config" currentPath={currentPath} icon={<Settings />} label="System Config" isCollapsed={isCollapsed} colorScheme="cyan" />
+      </div>
+
+      {/*  CONTROL BAR */}
+      <div className="border-t border-white/5 h-14 flex items-center justify-between px-4 bg-black">
         <button 
-          onClick={() => setActiveTab('config')}
-          className={`flex justify-center md:justify-between items-center p-3 rounded transition-all group w-full text-left
-            ${activeTab === 'config' 
-              ? 'bg-cyan-500/10 text-cyan-400 border-l-2 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.2)]' 
-              : 'text-gray-500 hover:text-cyan-400 hover:bg-cyan-500/5'}`}
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="text-gray-600 hover:text-white transition-colors p-1.5 rounded hover:bg-white/5 w-full flex justify-center md:justify-start"
+          title={isCollapsed ? "Expand Terminal" : "Collapse Terminal"}
         >
-          <span className="hidden md:block text-xs font-display tracking-widest uppercase mt-0.5">System Config</span>
-          <div className="relative flex-shrink-0">
-            <Settings className={`w-5 h-5 ${activeTab === 'config' ? 'text-cyan-400 animate-spin-slow' : 'group-hover:text-cyan-400'}`} />
-            {/* The Neon Pulse */}
-            <div className="absolute inset-0 bg-cyan-400 blur-md opacity-40 animate-pulse rounded-full pointer-events-none"></div>
-          </div>
+          {isCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
         </button>
       </div>
-    </nav>
+    </motion.nav>
   );
 }
 
-function NavButton({ icon, label, active, onClick, highlight, badge }) {
+
+function NavButton({ to, currentPath, icon, label, isCollapsed, badge, colorScheme = 'gold' }) {
+  const active = currentPath === to;
+  
+  // Dynamic Color Palettes
+  const colors = {
+    gold: {
+      activeBg: 'bg-gold/10',
+      activeBorder: 'border-gold',
+      activeShadow: 'shadow-[inset_4px_0_15px_rgba(251,191,36,0.15)]',
+      activeText: 'text-gold',
+      activeIconShadow: 'drop-shadow-[0_0_8px_rgba(251,191,36,0.8)]',
+      hoverBg: 'hover:bg-gold/5',
+      hoverText: 'hover:text-gold/80',
+      badgeBorder: 'border-gold/50',
+      badgeText: 'text-gold'
+    },
+    cyan: {
+      activeBg: 'bg-cyan-500/10',
+      activeBorder: 'border-cyan-400',
+      activeShadow: 'shadow-[inset_4px_0_15px_rgba(6,182,212,0.15)]',
+      activeText: 'text-cyan-400',
+      activeIconShadow: 'drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]',
+      hoverBg: 'hover:bg-cyan-500/5',
+      hoverText: 'hover:text-cyan-400/80',
+      badgeBorder: 'border-cyan-400/50',
+      badgeText: 'text-cyan-400'
+    }
+  };
+
+  const theme = colors[colorScheme];
+
   return (
-    <button 
-      onClick={onClick} 
-      className={`flex items-center justify-center md:justify-start gap-3 p-3 rounded transition-all group w-full text-left 
-        ${active ? 'bg-gold/10 text-gold border-l-2 border-gold shadow-[inset_4px_0_10px_rgba(251,191,36,0.1)]' : 'hover:bg-white/5 text-gray-500 hover:text-gray-300'} 
-        ${highlight && !active ? 'border border-gold/30 text-gold hover:bg-gold/5' : ''}`}
+    <Link 
+      to={to} 
+      className={`flex items-center p-3 rounded-lg transition-all duration-200 group relative
+        ${active ? `${theme.activeBg} border-l-4 ${theme.activeBorder} ${theme.activeShadow}` : `border-l-4 border-transparent ${theme.hoverBg}`} 
+        ${isCollapsed ? 'justify-center px-0' : 'justify-start gap-4'}
+      `}
     >
-      {React.cloneElement(icon, { className: `w-5 h-5 flex-shrink-0 ${active ? 'drop-shadow-[0_0_5px_rgba(251,191,36,0.8)]' : ''}` })}
-      <span className="hidden md:block font-display tracking-widest text-sm uppercase mt-0.5">{label}</span>
-      {badge && <span className="hidden md:block ml-auto text-[9px] border border-gold/50 text-gold px-1.5 rounded tracking-widest">{badge}</span>}
-    </button>
+      {/* Icon Wrapper for precise alignment and glowing */}
+      <div className={`relative flex-shrink-0 transition-colors duration-200 
+        ${active ? theme.activeText : `text-gray-500 group-${theme.hoverText}`}
+        ${isCollapsed ? 'mx-auto' : 'ml-2'}
+      `}>
+        {React.cloneElement(icon, { 
+          className: `w-5 h-5 transition-all duration-300 ${active ? theme.activeIconShadow : ''} 
+          ${colorScheme === 'cyan' && active ? 'animate-spin-slow' : ''}` 
+        })}
+      </div>
+      
+      {/* Text & Badge */}
+      <AnimatePresence>
+        {!isCollapsed && (
+          <motion.div 
+            initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}
+            className="flex items-center justify-between flex-1 whitespace-nowrap overflow-hidden"
+          >
+            <span className={`font-display tracking-widest text-[11px] font-bold uppercase mt-0.5 transition-colors duration-200
+              ${active ? 'text-white' : 'text-gray-400 group-hover:text-gray-200'}
+            `}>
+              {label}
+            </span>
+            {badge && (
+              <span className={`ml-2 text-[9px] border ${theme.badgeBorder} ${theme.badgeText} px-1.5 py-0.5 rounded font-tech tracking-widest font-bold`}>
+                {badge}
+              </span>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Custom CSS Tooltip for Collapsed Mode */}
+      {isCollapsed && (
+        <div className="absolute left-full ml-4 px-3 py-1.5 bg-black border border-white/10 text-white text-[10px] font-display tracking-widest uppercase font-bold rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 whitespace-nowrap shadow-xl flex items-center gap-2">
+          {label}
+          {badge && <span className={`${theme.badgeText} ml-1`}>[{badge}]</span>}
+        </div>
+      )}
+    </Link>
   );
 }

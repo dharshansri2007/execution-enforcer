@@ -1,28 +1,42 @@
-import os
 import requests
-from dotenv import load_dotenv
-
-# Load the master keys
-load_dotenv()
-NOTION_API_KEY = os.getenv("NOTION_API_KEY")
-PAGE_ID = os.getenv("NOTION_BASE_PAGE_ID")
-
-if not NOTION_API_KEY or not PAGE_ID:
-    print("🚨 ERROR: Notion keys are missing from .env file!")
-    exit()
-
-HEADERS = {
-    "Authorization": f"Bearer {NOTION_API_KEY}",
-    "Content-Type": "application/json",
-    "Notion-Version": "2022-06-28" # Required by Notion
-}
+import database 
 
 class NotionEnforcer:
+
     @staticmethod
-    def push_timetable(goal: str, tasks: list):
-        """Generates a checklist timetable and catches the block IDs."""
-        print(f"📡 Pushing Timetable to Notion HQ...")
-        url = f"https://api.notion.com/v1/blocks/{PAGE_ID}/children"
+    def _get_creds_and_headers(uid: str):
+        """ V2  AUTH: Dynamically fetches user-specific Notion keys from Firestore."""
+        user_doc = database.db.collection("users").document(uid).get()
+        if not user_doc.exists:
+            raise Exception(f"User {uid} not found in database.")
+            
+        user_data = user_doc.to_dict()
+        
+        # Pulls keys from the root document
+        api_key = user_data.get("notion_api_key")
+        page_id = user_data.get("notion_page_id")
+        
+        if not api_key or not page_id:
+            raise Exception(f"User {uid} has not connected their Notion account.")
+            
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Notion-Version": "2022-06-28" 
+        }
+        return page_id, headers
+
+    @staticmethod
+    def push_timetable(uid: str, goal: str, tasks: list):
+        """Generates a checklist timetable and catches the block IDs for a specific user."""
+        try:
+            page_id, headers = NotionEnforcer._get_creds_and_headers(uid)
+        except Exception as e:
+            print(f"🚨 Notion skipped: {e}")
+            return tasks # Return unmodified tasks if Notion isn't connected
+
+        print(f"📡 Pushing Timetable to {uid}'s Notion HQ...")
+        url = f"https://api.notion.com/v1/blocks/{page_id}/children"
         
         # Build the heading
         blocks = [
@@ -48,11 +62,11 @@ class NotionEnforcer:
             
         payload = {"children": blocks}
         
-        response = requests.patch(url, json=payload, headers=HEADERS)
+        response = requests.patch(url, json=payload, headers=headers)
         if response.status_code == 200:
             print("✅ Timetable successfully dropped into Notion!")
             
-            # 🔥 Catch the block IDs from Notion's response!
+            
             data = response.json()
             created_blocks = data.get("results", [])
             
@@ -64,17 +78,23 @@ class NotionEnforcer:
                 if i < len(todo_ids):
                     task['notion_page_id'] = todo_ids[i]
                     
-            return tasks # Return tasks WITH their new Notion IDs
+            return tasks 
         else:
             print(f"🚨 Notion API Error: {response.text}")
             return tasks
 
     @staticmethod
-    def mark_task_complete(block_id: str):
+    def mark_task_complete(uid: str, block_id: str):
         """Targets a specific checkbox block in Notion and ticks it."""
         if not block_id:
             return False
             
+        try:
+            _, headers = NotionEnforcer._get_creds_and_headers(uid)
+        except Exception as e:
+            print(f"🚨 Notion skipped: {e}")
+            return False
+
         print(f"🎯 Ticking off Notion Checkbox: {block_id}")
         url = f"https://api.notion.com/v1/blocks/{block_id}"
         
@@ -84,7 +104,7 @@ class NotionEnforcer:
             }
         }
         
-        response = requests.patch(url, json=payload, headers=HEADERS)
+        response = requests.patch(url, json=payload, headers=headers)
         if response.status_code == 200:
             print("✅ Notion Checkbox Marked as DONE!")
             return True
@@ -93,10 +113,16 @@ class NotionEnforcer:
             return False
 
     @staticmethod
-    def log_wall_of_shame(task_name: str, reason: str):
+    def log_wall_of_shame(uid: str, task_name: str, reason: str):
         """Stamps a permanent red block on the Wall of Shame."""
-        print(f"💀 Updating Wall of Shame...")
-        url = f"https://api.notion.com/v1/blocks/{PAGE_ID}/children"
+        try:
+            page_id, headers = NotionEnforcer._get_creds_and_headers(uid)
+        except Exception as e:
+            print(f"🚨 Notion skipped: {e}")
+            return False
+
+        print(f"💀 Updating Wall of Shame for {uid}...")
+        url = f"https://api.notion.com/v1/blocks/{page_id}/children"
         
         payload = {
             "children": [
@@ -114,7 +140,7 @@ class NotionEnforcer:
             ]
         }
         
-        response = requests.patch(url, json=payload, headers=HEADERS)
+        response = requests.patch(url, json=payload, headers=headers)
         if response.status_code == 200:
             print("💀 Failure permanently logged in Notion!")
             return True
@@ -122,15 +148,21 @@ class NotionEnforcer:
             print(f"🚨 Notion API Error: {response.text}")
             return False
 
-    # 🔥 THE DEMO FLEX: Notion Purge Engine 🔥
+    # Notion Purge 
     @staticmethod
-    def purge_completed_tasks():
-        """Scans the Notion page and deletes all to_do blocks that are checked."""
-        print("🧹 Initiating Notion Garbage Purge...")
+    def purge_completed_tasks(uid: str):
+        """Scans the user's Notion page and deletes all to_do blocks that are checked."""
+        try:
+            page_id, headers = NotionEnforcer._get_creds_and_headers(uid)
+        except Exception as e:
+            print(f"🚨 Notion skipped: {e}")
+            return False
+
+        print(f"🧹 Initiating Notion Garbage Purge for {uid}...")
         
         # Step 1: Fetch all blocks on the page
-        url = f"https://api.notion.com/v1/blocks/{PAGE_ID}/children"
-        response = requests.get(url, headers=HEADERS)
+        url = f"https://api.notion.com/v1/blocks/{page_id}/children"
+        response = requests.get(url, headers=headers)
         
         if response.status_code != 200:
             print(f"🚨 Failed to read Notion page: {response.text}")
@@ -151,7 +183,7 @@ class NotionEnforcer:
         success_count = 0
         for block_id in garbage_ids:
             del_url = f"https://api.notion.com/v1/blocks/{block_id}"
-            del_response = requests.delete(del_url, headers=HEADERS)
+            del_response = requests.delete(del_url, headers=headers)
             if del_response.status_code == 200:
                 success_count += 1
 
@@ -160,5 +192,5 @@ class NotionEnforcer:
 
 if __name__ == "__main__":
     print("=" * 40)
-    print("⚡ TESTING NOTION BOT")
+    print("⚡ V2 NOTION BOT (Wired to Internal Keys)")
     print("=" * 40)

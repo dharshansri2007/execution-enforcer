@@ -1,56 +1,50 @@
 import datetime
-import os.path
-from google.auth.transport.requests import Request
+import os
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+import database # Pulls in our V2 Firestore connection
 
-# Scope required to read and edit your calendar
+# Scope required to read and edit calendars
 SCOPES = ['https://www.googleapis.com/auth/calendar.events']
 TIMEZONE = 'Asia/Kolkata'
 
-# 🔥 THE TIMEZONE LOCK: Forces Cloud Shell to use IST natively
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
 class GCalEnforcer:
     
     @staticmethod
-    def get_service():
-        """Handles authentication safely using your existing token."""
-        creds = None
-        if os.path.exists('token.json'):
-            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    def get_service(uid: str):
+        """ V2  AUTH: Dynamically builds credentials from The Vault."""
+        # Pull tokens securely from the secrets subcollection
+        vault_data = database.get_google_tokens(uid)
+        
+        if not vault_data or not vault_data.get("access_token"):
+            raise Exception(f"User {uid} has not linked their Google Calendar. Tokens missing from Vault.")
             
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                print("\n" + "="*50)
-                print("🚨 SYSTEM ALERT: Authenticating Google Calendar...")
-                
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    'credentials.json', SCOPES, redirect_uri='http://localhost:8080'
-                )
-                auth_url, _ = flow.authorization_url(prompt='consent')
-                
-                print(f"🔗 CLICK HERE: {auth_url}")
-                print("="*50 + "\n")
-                
-                auth_response = input("👉 Paste the FULL redirected URL here (the one that says 'Hmmm... can't reach this page'): ")
-                
-                flow.fetch_token(authorization_response=auth_response.strip())
-                creds = flow.credentials
-                
-            with open('token.json', 'w') as token:
-                token.write(creds.to_json())
-                
+        access_token = vault_data.get("access_token")
+        refresh_token = vault_data.get("refresh_token")
+        
+        # We will set these in the GCP Cloud Run Environment Variables later
+        client_id = os.getenv("GOOGLE_CLIENT_ID")
+        client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+
+        # Rebuild the credentials object dynamically in memory
+        creds = Credentials(
+            token=access_token,
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=client_id,
+            client_secret=client_secret,
+            scopes=SCOPES
+        )
+        
         return build('calendar', 'v3', credentials=creds)
 
     @staticmethod
-    def clear_todays_schedule():
-        """ANTI-SPAM FIX: Sweeps and deletes existing Enforcer tasks before adding new ones."""
+    def clear_todays_schedule(uid: str):
+        """ANTI-SPAM FIX: Sweeps and deletes existing Enforcer tasks for a specific user."""
         try:
-            service = GCalEnforcer.get_service()
+            service = GCalEnforcer.get_service(uid)
             now = datetime.datetime.now(datetime.timezone.utc)
             time_min = now.isoformat()
             time_max = (now + datetime.timedelta(days=1)).isoformat()
@@ -64,13 +58,13 @@ class GCalEnforcer:
                 if "🤖 Automated by Execution Enforcer" in event.get('description', ''):
                     service.events().delete(calendarId='primary', eventId=event['id']).execute()
         except Exception as e:
-            print(f"⚠️ Calendar Sweep Failed: {e}")
+            print(f"⚠️ Calendar Sweep Failed for {uid}: {e}")
 
     @staticmethod
-    def push_schedule(tasks):
-        """Injects a clean, sequential list of tasks into the calendar."""
-        GCalEnforcer.clear_todays_schedule()
-        service = GCalEnforcer.get_service()
+    def push_schedule(uid: str, tasks: list):
+        """Injects a clean, sequential list of tasks into the user's calendar."""
+        GCalEnforcer.clear_todays_schedule(uid)
+        service = GCalEnforcer.get_service(uid)
         
         start_time = datetime.datetime.now(IST)
         
@@ -90,10 +84,10 @@ class GCalEnforcer:
             start_time = end_time 
 
     @staticmethod
-    def add_penalty_block(task_name, duration_hours):
-        """🔥 THE SEQUENTIAL STACKING ENGINE V2 (Index-Lag Proof)"""
+    def add_penalty_block(uid: str, task_name: str, duration_hours: int):
+        """ THE SEQUENTIAL STACKING  V2 (Index-Lag Proof)"""
         try:
-            service = GCalEnforcer.get_service()
+            service = GCalEnforcer.get_service(uid)
             now_ist = datetime.datetime.now(IST)
             
             # Default start time: Tomorrow, rounded down to the clean hour in IST
@@ -130,15 +124,15 @@ class GCalEnforcer:
                 'colorId': '11'
             }
             service.events().insert(calendarId='primary', body=event).execute()
-            print(f"💀 PENALTY BLOCK deployed to G-Cal sequentially at {start_time.strftime('%I:%M %p')}")
+            print(f"💀 PENALTY BLOCK deployed to {uid}'s G-Cal sequentially at {start_time.strftime('%I:%M %p')}")
         except Exception as e:
-            print(f"⚠️ Failed to add penalty block: {e}")
+            print(f"⚠️ Failed to add penalty block for {uid}: {e}")
 
     @staticmethod
-    def redeem_penalty(task_name):
+    def redeem_penalty(uid: str, task_name: str):
         """THE REDEMPTION ARC"""
         try:
-            service = GCalEnforcer.get_service()
+            service = GCalEnforcer.get_service(uid)
             now = datetime.datetime.now(datetime.timezone.utc)
             time_min = now.isoformat()
             time_max = (now + datetime.timedelta(days=7)).isoformat()
@@ -152,6 +146,6 @@ class GCalEnforcer:
             for event in events:
                 if f"PENALTY: {task_name}" in event.get('summary', '') and "Execution Enforcer" in event.get('description', ''):
                     service.events().delete(calendarId='primary', eventId=event['id']).execute()
-                    print(f"🕊️ REDEMPTION: Removed penalty block for - {task_name}")
+                    print(f"🕊️ REDEMPTION: Removed penalty block for {uid} - {task_name}")
         except Exception as e:
-            print(f"⚠️ Failed to redeem penalty: {e}")
+            print(f"⚠️ Failed to redeem penalty for {uid}: {e}")
