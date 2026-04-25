@@ -3,11 +3,24 @@
 > **Submission:** Google Cloud Gen AI Academy Hackathon (APAC 2026)  
 > **Status:** ✅ Production Live | **Architecture:** Serverless MCP Multi-Agent System
 
+---
+
 ### 🚀 LIVE DEMO & DEPLOYMENT
+* **Frontend (Firebase Hosting):** https://execution-enforcer-v2.web.app
+* **Backend API (GCP Cloud Run):** https://execution-api-56490110968.asia-south1.run.app
 
-* **Frontend (React/Netlify):** [Click Here to Access Web App](https://execution-enforcer-007.netlify.app/)
+---
 
-* **Backend API (GCP Cloud Run):** [Active Stateless Container](https://execution-backend-796951969409.asia-south1.run.app/)
+## 🔄 The V2 Refinement Delta (V1 vs V2)
+This repository represents the final, production-ready V2 architecture, migrating from a localized prototype to a fully persistent, cloud-native compliance engine.
+
+| Feature | Phase 1 Prototype (V1) | Phase 2 Enterprise Refinement (V2) |
+| :--- | :--- | :--- |
+| **Model Engine** | Standard Gemini API | **Vertex AI Gemini 2.5 Pro** (Advanced Reasoning) |
+| **Database** | Ephemeral Local SQLite | **Persistent Cloud Firestore** (Zero data loss, real-time sync) |
+| **Enforcement** | Passive notifications | **Active Mutative MCP** (Alters live Google Calendar & Notion) |
+| **Architecture** | Stateful Flask backend | **Serverless FastAPI on Google Cloud Run** (Scales to zero) |
+| **UI / UX** | Basic React wireframes on Netlify | **High-fidelity dark-mode UI** with 182-day heatmap (Firebase) |
 
 ---
 
@@ -40,7 +53,7 @@ Browser `visibilitychange` API monitors session focus. Any navigation away from 
 
 **Intelligence Logs — AI Adaptation Feed**
 
-The Adaptation Agent reads the failure cause, task difficulty, duration estimate, and the last 5 SQLite failure records. It generates a named, personalized behavioral analysis — identifying patterns like consecutive EASY task failures or repeated same-hour abandonment — and recalculates time allocation for future directives accordingly.
+The Adaptation Agent reads the failure cause, task difficulty, duration estimate, and the last 5 Firestore failure records. It generates a named, personalized behavioral analysis — identifying patterns like consecutive EASY task failures or repeated same-hour abandonment — and recalculates time allocation for future directives accordingly.
 
 **G-Calendar Command**
 
@@ -48,7 +61,7 @@ Live Google Calendar sync. The AI reads the user's actual schedule to surface th
 
 **Execution Heatmap**
 
-A 182-day (26-week) activity grid rendered from raw SQLite timestamps. Days with completed tasks glow. Days with only failures are marked. Days with zero activity are dark. No manual input — the ledger drives everything.
+A 182-day (26-week) activity grid rendered from raw Firestore timestamps. Days with completed tasks glow. Days with only failures are marked. Days with zero activity are dark. No manual input — the ledger drives everything.
 
 **Rewards Store & XP System**
 
@@ -58,16 +71,17 @@ Persistent XP earned from successful task completions. Redeemable for system mod
 
 A backend loop that authenticates to Notion, queries all checked `to_do` blocks across the user's workspace, and bulk-deletes them. One-click workspace hygiene.
 
-## 🏗️ Architecture & Deployment 
-To ensure enterprise-grade scalability and privacy, this project uses a strictly decoupled, zero-trust architecture.
+## 🏗️ Cloud-Native Architecture
 
-* **Frontend:** High-velocity React + Vite client deployed on Netlify.
+To ensure enterprise-grade scalability and data persistence, this project utilizes a strictly decoupled, zero-trust infrastructure.
 
-* **Backend Engine:** Python/Flask REST API hosted on **Google Cloud Run**.
+* **Frontend:** React + Vite client deployed on Google's Global CDN (**Firebase Hosting**).
 
-* **Security Protocol:**  Strict OAuth 2.0 protocols, meaning there are absolutely **zero hardcoded credentials** in our codebase and all secrets managed via environment variables.
+* **Backend Engine:** Containerized Python/FastAPI REST API hosted on **Google Cloud Run**.
 
-* **Stateless Runtime:** The Cloud Run container is ephemeral. The API processes the orchestration, handles the agent logic, and spins down cleanly without leaking the state
+* **Database:** **Cloud Firestore** for high-speed, NoSQL persistent state management.
+
+* **Security Protocol:** Strict OAuth 2.0 implementation. Zero hardcoded credentials; all secrets injected at runtime via environment variables.
 
 ---
 
@@ -97,25 +111,27 @@ The AI does not operate in a solo. It interfaces with the actual workspace:
 
 ### 3. Structured Data & Workflows (`database.py`)
 
-* Utilizes a localized, schema-enforced SQLite database to maintain the exact state of tasks, track the history of rescheduling attempts, and store AI-generated sub-tasks for multi-step workflows.
-
+  "Migrated to Cloud Firestore to maintain the exact persistent state of tasks, execution histories, and AI-generated workflows across distributed sessions."
+  
 ### 4. API-Based Deployment (`main.py`)
 
-* The core multi-agent AI engine is fully decoupled, operating as a secure REST API on Google Cloud Run, seamlessly coordinating with the Netlify frontend.
+* The core multi-agent AI engine is fully decoupled, operating as a secure REST API on Google Cloud Run, seamlessly coordinating with the **Firebase-hosted React client**.
 
 ---
 
 ## 💻 Technical Stack
 
-* **AI Engine:** Google Gemini API & Vertex AI
+* **AI Engine:** Google Vertex AI (Gemini 2.5 Pro)
+  
+* **Cloud Infrastructure:** Google Cloud Platform (Cloud Run, Firebase Hosting)
 
-* **Cloud Infrastructure:** Google Cloud Platform (Cloud Run)
-
-* **Backend:** Python / FastAPI
+* **Backend:** Python / FastAPI / Docker
 
 * **Frontend:** React / Tailwind CSS / Vite
 
-* **Auth:** Google Identity Services (OAuth 2.0)
+* **Database:** Google Cloud Firestore (NoSQL)
+
+* **Auth & Integration:** Google Identity Services (OAuth 2.0), Model Context Protocol (MCP)
 
 ---
 
@@ -131,10 +147,12 @@ cd execution-enforcer
 
 ### 2. Backend Setup (Python API)
 <pre>
-# Create and activate a secure virtual environment
+cd backend
 python -m venv venv
-.\venv\Scripts\activate   # For Windows
-# source venv/bin/activate # For Mac/Linux
+
+# Activate Environment
+.\venv\Scripts\activate   # Windows
+# source venv/bin/activate # Mac/Linux
 
 # Install backend dependencies
 pip install -r requirements.txt
@@ -142,32 +160,32 @@ pip install -r requirements.txt
 
 ### 3. Security & Environment Variables
 <pre>
-# Create a .env file in the root directory and add your credentials:
-# (Never commit this file to version control)
+GEMINI_API_KEY=your_gemini_api_key_here
 
-echo "GEMINI_API_KEY=your_gemini_api_key_here" > .env
-echo "GOOGLE_CLIENT_ID=your_oauth_client_id_here" >> .env
-echo "GOOGLE_CLIENT_SECRET=your_oauth_client_secret_here" >> .env
-</pre>
+GOOGLE_CLIENT_ID=your_oauth_client_id_here
+
+GOOGLE_CLIENT_SECRET=your_oauth_client_secret_here
+
+NOTION_API_KEY=your_notion_integration_secret
+
+FIREBASE_SERVICE_ACCOUNT_KEY=path/to/your/firebase-adminsdk.json</pre>
 
 ### 4. Boot the Orchestration Engine
 <pre>
 # Start the FastAPI and Multi-Agent system
 python main.py
-
-# The backend will initialize on http://127.0.0.1:5000
+# The backend initializes on http://localhost:8000
 </pre>
 
 ### 5. Launch the Client (React Frontend)
 <pre>
-# Open a NEW terminal window, keep the backend running!
+# Open a NEW terminal window
 cd frontend
 
 # Install Node modules and boot Vite server
 npm install
 npm run dev
-
-# The UI will deploy on http://localhost:5173
+# The UI deploys on http://localhost:5173
 </pre>
 
 ---
